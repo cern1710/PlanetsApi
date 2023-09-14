@@ -4,6 +4,7 @@ using Newtonsoft.Json;
 
 public class Planet
 {
+    [Key]
     public string? Name { get; set; }
     public string? Rotation_period { get; set; }
     public string? Orbital_period { get; set; }
@@ -18,4 +19,6 @@ public class Planet
     public string? Created { get; set; }
     public string? Edited { get; set; }
     public string? Url { get; set; }
+    [JsonIgnore]
+    public bool isFavorite { get; set; }
 }

@@ -1,13 +1,17 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddDbContext<PlanetDb>(opt => opt.UseInMemoryDatabase("PlanetList"));
+builder.Services.AddDbContext<PlanetDb>(opt =>
+    opt.UseInMemoryDatabase("PlanetList"));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 builder.Services.AddHttpClient();
 var app = builder.Build();
 
-async Task<IResult> FetchPlanetsAsync(IHttpClientFactory clientFactory)
+/******* GET a list of Planets from the SWAPI API *******/
+async Task<IResult> GetPlanetsAsync(IHttpClientFactory clientFactory)
 {
     var client = clientFactory.CreateClient();
     var planets = new List<Planet>();
@@ -27,50 +31,129 @@ async Task<IResult> FetchPlanetsAsync(IHttpClientFactory clientFactory)
     }
 
     if (planets.Count == 0)
-        return Results.NotFound("No planets found! Error occurred while fetching planets from the Star Wars API.");
+        return Results.NotFound("Error occurred with GET request to SWAPI!");
 
     return Results.Ok(planets);
 }
 
-app.MapGet("/planets", FetchPlanetsAsync);
+app.MapGet("/planets", GetPlanetsAsync);
 
 
-app.MapPut("/favorites/{id}", async (int id, Planet inputPlanet, PlanetDb db) =>
+/******* GET a list of favourite Planets *******/
+async Task<IResult> GetFavoritesAsync(PlanetDb dbContext)
 {
-    var planet = await db.Planets.FindAsync(id);
+    var favoritePlanets =
+        await dbContext.Planets.Where(p => p.isFavorite).ToListAsync();
 
-    if (planet is null) return Results.NotFound();
+    if (!favoritePlanets.Any())
+        return Results.NotFound("No favorite planets found!");
 
-    planet.Name = inputPlanet.Name;
-    planet.Rotation_period = inputPlanet.Rotation_period;
-    planet.Orbital_period = inputPlanet.Orbital_period;
-    planet.Diameter = inputPlanet.Diameter;
-    planet.Climate = inputPlanet.Climate;
-    planet.Gravity = inputPlanet.Gravity;
-    planet.Terrain = inputPlanet.Terrain;
-    planet.Surface_water = inputPlanet.Surface_water;
-    planet.Population = inputPlanet.Population;
-    planet.Residents = inputPlanet.Residents;
-    planet.Films = inputPlanet.Films;
-    planet.Created = inputPlanet.Created;
-    planet.Edited = inputPlanet.Edited;
-    planet.Url = inputPlanet.Url;
+    return Results.Ok(favoritePlanets);
+}
 
-    await db.SaveChangesAsync();
+app.MapGet("/favorites", GetFavoritesAsync);
 
-    return Results.NoContent();
-});
 
-app.MapDelete("/favorites/{id}", async (int id, PlanetDb db) =>
+/******* POST a favourite Planet and save to an in memory entity   *******/
+/******* framework database - Planets can only be favourited once. *******/
+async Task<Planet?> FetchPlanetFromSwapi(string planetName, HttpClient client)
 {
-    if (await db.Planets.FindAsync(id) is Planet planet)
+    string? nextUrl = "https://swapi.dev/api/planets/";
+
+    // iterate through the urls one by one until the next one is null or the planet is found
+    while (!string.IsNullOrEmpty(nextUrl))
     {
-        db.Planets.Remove(planet);
-        await db.SaveChangesAsync();
-        return Results.NoContent();
+        var response = await client.GetStringAsync(nextUrl);
+        var jsonResponse = JsonConvert.DeserializeObject<SwapiResponse>(response);
+
+        var foundPlanet = jsonResponse?.Results?.FirstOrDefault(p => p.Name == planetName);
+        if (foundPlanet != null)
+            return foundPlanet;
+
+        nextUrl = jsonResponse?.Next;
     }
 
-    return Results.NotFound();
-});
+    return null; // Planet not found
+}
+
+async Task<IResult> PostFavoriteAsync(IHttpClientFactory clientFactory,
+    PlanetDb dbContext, string planetName)
+{
+    var client = clientFactory.CreateClient();
+    var planet = FetchPlanetFromSwapi(planetName, client);
+
+    if (planet == null)
+        return Results.NotFound($"Planet named {planetName} not found in SWAPI.");
+
+    var fetchedPlanet = await planet; // Get the Planet instance from the Task<Planet>
+    var existingPlanet = await dbContext.Planets.FirstOrDefaultAsync(p => p.Name == fetchedPlanet.Name);
+
+
+    if (existingPlanet != null)
+    {
+        if (existingPlanet.isFavorite)
+            return Results.BadRequest("Planet is already favorited.");
+
+        existingPlanet.isFavorite = true;
+    }
+    else
+    {
+        fetchedPlanet.isFavorite = true;
+        dbContext.Planets.Add(fetchedPlanet);
+    }
+
+    await dbContext.SaveChangesAsync();
+    return Results.Ok(planet);
+}
+
+app.MapPost("/favorites/{planetName}", PostFavoriteAsync);
+
+
+/******* DELETE a favourite planet. *******/
+async Task<IResult> DeleteFavoritePlanetAsync(string planetName, PlanetDb dbContext)
+{
+    var planet = await dbContext.Planets.FirstOrDefaultAsync(p => p.Name == planetName);
+
+    if (planet == null || !planet.isFavorite)
+        return Results.NotFound("Planet not found or not favorited.");
+
+    planet.isFavorite = false;
+    await dbContext.SaveChangesAsync();
+
+    return Results.Ok($"Removed {planetName} from favorites.");
+}
+
+app.MapDelete("/favorites/{planetName}", DeleteFavoritePlanetAsync);
+
+
+/******* GET a random planet that has not yet *******/
+/******* been favourited from the SWAPI API.  *******/
+async Task<IResult> GetRandomAsync(IHttpClientFactory clientFactory)
+{
+    //var client = clientFactory.CreateClient();
+    //var planets = new List<Planet>();
+
+    //string? nextUrl = "https://swapi.dev/api/planets/";
+
+    //// iterate through the urls one by one until the next one is null
+    //while (!string.IsNullOrEmpty(nextUrl))
+    //{
+    //    var response = await client.GetStringAsync(nextUrl);
+    //    var jsonResponse = JsonConvert.DeserializeObject<SwapiResponse>(response);
+
+    //    if (jsonResponse?.Results != null)
+    //        planets.AddRange(jsonResponse.Results);
+
+    //    nextUrl = jsonResponse?.Next;
+    //}
+
+    //if (planets.Count == 0)
+    //    return Results.NotFound("Error occurred with GET request to SWAPI!");
+
+    //return Results.Ok(planets);
+}
+
+app.MapGet("/randomNotFavorited", GetRandomAsync);
+
 
 app.Run();
