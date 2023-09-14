@@ -14,6 +14,7 @@
     <None Remove="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" />
     <None Remove="Newtonsoft.Json" />
     <None Remove="System.Net.Http" />
+    <None Remove="Microsoft.AspNetCore.Mvc.NewtonsoftJson" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="7.0.11" />
@@ -21,5 +22,6 @@
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="7.0.11" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.Net.Http" Version="4.3.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="7.0.11" />
   </ItemGroup>
 </Project>
