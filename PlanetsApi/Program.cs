@@ -94,8 +94,6 @@ async Task<IResult> PostFavoriteAsync(IHttpClientFactory clientFactory,
     .FirstOrDefaultAsync(p => p.Name.Equals(fetchedPlanet.Name,
                             StringComparison.OrdinalIgnoreCase));
 
-
-
     if (existingPlanet != null)
     {
         if (existingPlanet.isFavorite)
@@ -144,7 +142,6 @@ async Task<IResult> GetRandomAsync(IHttpClientFactory clientFactory, PlanetDb db
     var allPlanets = new List<Planet>();
     string? nextUrl = "https://swapi.dev/api/planets/";
 
-    // Fetch all planets from the SWAPI API
     while (!string.IsNullOrEmpty(nextUrl))
     {
         var response = await client.GetStringAsync(nextUrl);
@@ -156,20 +153,18 @@ async Task<IResult> GetRandomAsync(IHttpClientFactory clientFactory, PlanetDb db
         nextUrl = jsonResponse?.Next;
     }
 
-    // Fetch all favorited planets from your database
+    // fetch all favorited planets from database
     var favoritedPlanetsNames = await dbContext.Planets
         .Where(p => p.isFavorite)
         .Select(p => p.Name)
         .ToListAsync();
 
-    // Filter out the favorited planets from the allPlanets list
     var notFavoritedPlanets = allPlanets.Where(p =>
             !favoritedPlanetsNames.Contains(p.Name)).ToList();
 
     if (!notFavoritedPlanets.Any())
         return Results.NotFound("All planets have been favorited!");
 
-    // Select a random planet from the notFavoritedPlanets list
     var random = new Random();
     var randomPlanet = notFavoritedPlanets[random.Next(notFavoritedPlanets.Count)];
 
