@@ -4,43 +4,38 @@ using Newtonsoft.Json;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<PlanetDb>(opt => opt.UseInMemoryDatabase("PlanetList"));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+builder.Services.AddHttpClient();
 var app = builder.Build();
 
-app.MapGet("/swapi/planets", async () => 
+async Task<IResult> FetchPlanetsAsync(IHttpClientFactory clientFactory)
 {
-    var client = new HttpClient();
-    var response = await client.GetStringAsync("https://swapi.dev/api/planets/");
-    var jsonResponse = JsonConvert.DeserializeObject<SwapiResponse>(response);
-    
-    if (jsonResponse?.Results == null)
+    var client = clientFactory.CreateClient();
+    var planets = new List<Planet>();
+
+    string? nextUrl = "https://swapi.dev/api/planets/";
+
+    // iterate through the urls one by one until the next one is null
+    while (!string.IsNullOrEmpty(nextUrl))
     {
-        return Results.NotFound("No planets found or an error occurred while fetching planets from SWAPI.");
+        var response = await client.GetStringAsync(nextUrl);
+        var jsonResponse = JsonConvert.DeserializeObject<SwapiResponse>(response);
+
+        if (jsonResponse?.Results != null)
+            planets.AddRange(jsonResponse.Results);
+
+        nextUrl = jsonResponse?.Next;
     }
 
-    return Results.Ok(jsonResponse.Results);
-});
+    if (planets.Count == 0)
+        return Results.NotFound("No planets found! Error occurred while fetching planets from the Star Wars API.");
 
-app.MapGet("/planetitems", async (PlanetDb db) =>
-    await db.Planets.ToListAsync());
+    return Results.Ok(planets);
+}
 
-app.MapGet("/planetitems/complete", async (PlanetDb db) =>
-    await db.Planets.Where(p => p.IsComplete).ToListAsync());
+app.MapGet("/planets", FetchPlanetsAsync);
 
-app.MapGet("/planetitems/{id}", async (int id, PlanetDb db) =>
-    await db.Planets.FindAsync(id)
-        is Planet planet
-            ? Results.Ok(planet)
-            : Results.NotFound());
 
-app.MapPost("/planetitems", async (Planet planet, PlanetDb db) =>
-{
-    db.Planets.Add(planet);
-    await db.SaveChangesAsync();
-
-    return Results.Created($"/planetitems/{planet.Id}", planet);
-});
-
-app.MapPut("/planetitems/{id}", async (int id, Planet inputPlanet, PlanetDb db) =>
+app.MapPut("/favorites/{id}", async (int id, Planet inputPlanet, PlanetDb db) =>
 {
     var planet = await db.Planets.FindAsync(id);
 
@@ -55,20 +50,18 @@ app.MapPut("/planetitems/{id}", async (int id, Planet inputPlanet, PlanetDb db) 
     planet.Terrain = inputPlanet.Terrain;
     planet.Surface_water = inputPlanet.Surface_water;
     planet.Population = inputPlanet.Population;
-    planet.ResidentsData = inputPlanet.ResidentsData;
-    planet.FilmsData = inputPlanet.FilmsData;
+    planet.Residents = inputPlanet.Residents;
+    planet.Films = inputPlanet.Films;
     planet.Created = inputPlanet.Created;
     planet.Edited = inputPlanet.Edited;
     planet.Url = inputPlanet.Url;
-
-    planet.IsComplete = inputPlanet.IsComplete;
 
     await db.SaveChangesAsync();
 
     return Results.NoContent();
 });
 
-app.MapDelete("/planetitems/{id}", async (int id, PlanetDb db) =>
+app.MapDelete("/favorites/{id}", async (int id, PlanetDb db) =>
 {
     if (await db.Planets.FindAsync(id) is Planet planet)
     {
