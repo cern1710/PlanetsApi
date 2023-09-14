@@ -1,9 +1,24 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<PlanetDb>(opt => opt.UseInMemoryDatabase("PlanetList"));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 var app = builder.Build();
+
+app.MapGet("/swapi/planets", async () => 
+{
+    var client = new HttpClient();
+    var response = await client.GetStringAsync("https://swapi.dev/api/planets/");
+    var jsonResponse = JsonConvert.DeserializeObject<SwapiResponse>(response);
+    
+    if (jsonResponse?.Results == null)
+    {
+        return Results.NotFound("No planets found or an error occurred while fetching planets from SWAPI.");
+    }
+
+    return Results.Ok(jsonResponse.Results);
+});
 
 app.MapGet("/planetitems", async (PlanetDb db) =>
     await db.Planets.ToListAsync());
